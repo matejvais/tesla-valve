@@ -50,23 +50,67 @@ from firedrake import *
 #################################################
 
 
+def generate_points(lobes):
+    '''
+    Return an 2D array of points defining the Tesla valve. The first lobe is facing downward.
+    Variables:
+        lobes - number of lobes in the Tesla valve, an even number (eg. 2, 4, 6, ...)
+    '''
+    coords = np.zeros((lobes, 12, 2))
+    x_shift, y_shift = 133, 38
+    ps = np.array([
+     [0   ,-38],
+     [133 ,  0],
+     [189 ,-16],
+     [189 ,-24],
+     [195 ,-26],
+     [210 ,-53],
+     [181 ,-69],
+     [ 86 ,-37],
+     [129 ,-26],
+     [191 ,-37],
+     [197 ,-49],
+     [184 ,-57]])
+    for l in range(lobes):
+        qs = np.copy(ps)
+        qs[:,1] *= (-1)**l  # mirror the y coordinates for odd lobes
+        qs[:,0] += x_shift*l    # shift by the length of one lobe l times
+        qs[:,1] += y_shift*(l%2)    # shift odd lobes up
+        coords[l, :, :] = qs
+    return coords
+        
+# ps = [
+#     (0   ,-38),
+#     (133 ,  0),
+#     (189 ,-16),
+#     (189 ,-24),
+#     (195 ,-26),
+#     (210 ,-53),
+#     (181 ,-69)]
+# qs = [
+#     ( 86 ,-37),
+#     (129 ,-26),
+#     (191 ,-37),
+#     (197 ,-49),
+#     (184 ,-57)]
 
-def netgen_mesh():
+def netgen_mesh(lobes, elem_size):
     geo = SplineGeometry()
-    ps = [
-     (0   ,-38),
-     (133 ,  0),
-     (189 ,-16),
-     (189 ,-24),
-     (195 ,-26),
-     (210 ,-53),
-     (181 ,-69)]
-    qs = [
-     ( 86 ,-37),
-     (129 ,-26),
-     (191 ,-37),
-     (197 ,-49),
-     (184 ,-57)]
+    coords = generate_points(lobes)
+
+    # add the beginning of the valve (inlet)
+    bs = [(-45, 0), (-45, -38)]
+    b0, b1 = [geo.AppendPoint(*b) for b in bs]
+    ps = [coords[0,0], coords[0,1]]
+    p0, p1 = [geo.AppendPoint(*p) for p in ps]
+    beginning_curves = [
+        [["line", p1, b0], "line"],
+        [["line", b0, b1], "line"],
+        [["line", b1, p0], "line"]
+    ]
+    [geo.Append(c, bc=bc) for c, bc in beginning_curves]
+
+    # add all of the lobes of the valve
     p0, p1, p2, p3, p4, p5, p6 = [geo.AppendPoint(*p) for p in ps]
     p45 = geo.AppendPoint(*corner(ps[4], ps[5])) 
     p56 = geo.AppendPoint(*corner(ps[5], ps[6]))
@@ -91,7 +135,11 @@ def netgen_mesh():
     ]
     [geo.Append(c, bc=bc) for c, bc in outer_curves]
     [geo.Append(c, bc=bc) for c, bc in inner_curves]
-    ngmsh = geo.GenerateMesh(maxh=10)
+
+    # add the end of the valve
+    # ...
+
+    ngmsh = geo.GenerateMesh(maxh=elem_size)
     msh = Mesh(ngmsh)
     VTKFile("output/MeshExample2.pvd").write(msh)
     
@@ -108,14 +156,16 @@ def corner(pointA,pointB):
     return tuple((c1, c2))
 
 
-def shift_coords(data, x_shift, y_shift):
-    '''
-    Auxiliary function.
-    Prints coordinates of points together with their shifted counterparts.
-    '''
-    data = np.concatenate([data+np.array([x_shift, y_shift])], axis=1)
-    print(data)
+# def shift_coords(data, x_shift, y_shift):
+#     '''
+#     Auxiliary function.
+#     Prints coordinates of points together with their shifted counterparts.
+#     '''
+#     data = np.concatenate([data+np.array([x_shift, y_shift])], axis=1)
+#     print(data)
 
 
 if __name__ == "__main__":
-    netgen_mesh()
+    # netgen_mesh()
+    ps = generate_points(4)
+    print(ps)
