@@ -65,7 +65,7 @@ def corner(pointA,pointB):
 
 def generate_points(lobes):
     '''
-    Return an 2D array of points defining the Tesla valve. The first lobe is facing downward.
+    Returns an 2D array of points defining the Tesla valve. The first lobe is facing downward.
     Variables:
         lobes - number of lobes in the Tesla valve
     '''
@@ -93,13 +93,14 @@ def generate_points(lobes):
     return coords
 
 
-def netgen_mesh(lobes, max_elem_size, name="tesla-valve.pvd"):
+def netgen_mesh(lobes, max_elem_size, generate_pvd=True, name="tesla-valve.pvd"):
     '''
     Generates mesh in the shape of a Tesla valve with a given number of lobes.
     Variables:
         lobes - number of lobes in the valve (integer >= 2)
         max_elem_size - maximal size of a finite element forming the mesh
         name - name of the resulting mesh file
+    Returns: mesh object
     '''
     geo = SplineGeometry()
     coords = generate_points(lobes)
@@ -110,10 +111,10 @@ def netgen_mesh(lobes, max_elem_size, name="tesla-valve.pvd"):
     b0, b1 = [geo.AppendPoint(*b) for b in bs]  # append points to the geometry
     p[0,0] = geo.AppendPoint(*coords[0,0])
     beginning_curves = [    # define curves that constitute the initial part of the domain boundary
-        [["line", b0, b1], "line"],
+        [["line", b0, b1], "inlet"],    # this part of the boundary forms an inlet for the fluid coming inside
         [["line", b1, p[0,0]], "line"]
     ]
-    [geo.Append(c, bc=bc) for c, bc in beginning_curves]    # append curves to the geometry
+    [geo.Append(c, bc=bc) for c, bc in beginning_curves]
 
     # add lobes
     for l in range(lobes):
@@ -264,7 +265,7 @@ def netgen_mesh(lobes, max_elem_size, name="tesla-valve.pvd"):
                 [["line", p[lobes-1,5], e0], "line"],
                 [["spline3", e0, e1, e2], "curve"],
                 [["line", e2, e3], "line"],
-                [["line", e3, e4], "line"],
+                [["line", e3, e4], "outlet"],   # this part of the boundary forms an outlet for the fluid inside
                 [["line", e4, e5], "line"],
                 [["line", e5, p[lobes-1,1]], "line"]
         ]
@@ -275,7 +276,7 @@ def netgen_mesh(lobes, max_elem_size, name="tesla-valve.pvd"):
                 [["line", e0, p[lobes-1,5]], "line"],
                 [["spline3", e2, e1, e0], "curve"],
                 [["line", e3, e2], "line"],
-                [["line", e4, e3], "line"],
+                [["line", e4, e3], "outlet"],   # this part of the boundary forms an outlet for the fluid inside
                 [["line", e5, e4], "line"],
                 [["line", p[lobes-1,1], e5], "line"]
         ]
@@ -283,11 +284,15 @@ def netgen_mesh(lobes, max_elem_size, name="tesla-valve.pvd"):
 
     # construct the mesh
     ngmsh = geo.GenerateMesh(maxh=max_elem_size)
+    
+    # labels = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name in ["line","curve"]]
+    # bc = DirichletBC(V, 0, labels)
+    # print(labels)
+
     msh = Mesh(ngmsh)
-    VTKFile(f"output/{name}").write(msh)
+    if generate_pvd: VTKFile(f"output/{name}").write(msh)
+    return msh
 
 
 if __name__ == "__main__":
-    # ps = generate_points(3)
-    # print(ps)
     netgen_mesh(lobes=2, max_elem_size=10)
