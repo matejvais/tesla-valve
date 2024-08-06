@@ -93,7 +93,14 @@ def generate_points(lobes):
     return coords
 
 
-def netgen_mesh(lobes, max_elem_size, debug=False):
+def netgen_mesh(lobes, max_elem_size, name="tesla-valve.pvd"):
+    '''
+    Generates mesh in the shape of a Tesla valve with a given number of lobes.
+    Variables:
+        lobes - number of lobes in the valve (integer >= 2)
+        max_elem_size - maximal size of a finite element forming the mesh
+        name - name of the resulting mesh file
+    '''
     geo = SplineGeometry()
     coords = generate_points(lobes)
     p = np.empty((lobes, 16), dtype=int)
@@ -110,7 +117,6 @@ def netgen_mesh(lobes, max_elem_size, debug=False):
 
     # add lobes
     for l in range(lobes):
-        if debug: print(f"Constructing lobe with index: {l}")
 
         # defining points
         ps = [coords[l][0], coords[l][1], coords[l][2], coords[l][3], coords[l][4], coords[l][5], coords[l][6]] # outer boundary points
@@ -140,8 +146,6 @@ def netgen_mesh(lobes, max_elem_size, debug=False):
                 [["spline3", p[l,10], p[l,15], p[l,11]], "curve"],
                 [["line", p[l,11], p[l,7]], "line"] 
             ]
-            if debug and lobes == 1:
-                outer_curves.append([["line", p[l,2], p[l,1]], "line"])
             
             # appending boundary curves to the geometry
             [geo.Append(c, bc=bc) for c, bc in outer_curves]
@@ -173,14 +177,11 @@ def netgen_mesh(lobes, max_elem_size, debug=False):
                     [["line", p[l,11], p[l,7]], "line"] 
                 ]
 
-                if debug and l == lobes-1:
-                    outer_curves.append([["line", p[l,2], p[l,1]], "line"])
-
                 # appending boundary curves to the geometry
                 [geo.Append(c, bc=bc) for c, bc in outer_curves]
                 [geo.Append(c, bc=bc) for c, bc in inner_curves]    
 
-            else:   # lobes with odd indices have an opposite orientation
+            else:   # lobes with odd indices have an opposite orientation of boundary curves
                 p[l,1], p[l,2], p[l,3], p[l,4], p[l,5], p[l,6] = [geo.AppendPoint(*p) for p in ps[1:7]]
                 p[l,7], p[l,8], p[l,9], p[l,10], p[l,11] = [geo.AppendPoint(*q) for q in qs]
                 p[l,12] = geo.AppendPoint(*corner(ps[4], ps[5]))    # p45
@@ -204,61 +205,89 @@ def netgen_mesh(lobes, max_elem_size, debug=False):
                     [["line", p[l,7], p[l,11]], "line"] 
                 ]
 
-                if debug and l == lobes-1:
-                    outer_curves.append([["line", p[l,1], p[l,2]], "line"])
-
                 # appending boundary curves to the geometry
                 [geo.Append(c, bc=bc) for c, bc in outer_curves]
                 [geo.Append(c, bc=bc) for c, bc in inner_curves]
 
         # the final lobe
         else:
-            p[l,1], p[l,5], p[l,6] = geo.AppendPoint(*ps[1]), geo.AppendPoint(*ps[5]), geo.AppendPoint(*ps[6])
-            p[l,7], p[l,8], p[l,9], p[l,10], p[l,11] = [geo.AppendPoint(*q) for q in qs]
-            p[l,13] = geo.AppendPoint(*corner(ps[5], ps[6]))    # p56
-            p[l,14] = geo.AppendPoint(*corner(qs[2], qs[3]))    # q23
-            p[l,15] = geo.AppendPoint(*corner(qs[3], qs[4]))    # q34
-            outer_curves = [
-                [["line", p[l-1, 1], p[l,6]], "line"],
-                [["spline3", p[l,6], p[l,13], p[l,5]], "curve"],
-                [["line", p[l,1], p[l-1,2]], "line"]    # line connecting adjacent lobes
-            ]
-            inner_curves = [
-                [["line", p[l,7], p[l,8]], "line"],
-                [["line", p[l,8], p[l,9]], "line"],
-                [["spline3", p[l,9], p[l,14], p[l,10]], "curve"],
-                [["spline3", p[l,10], p[l,15], p[l,11]], "curve"],
-                [["line", p[l,11], p[l,7]], "line"] 
-            ]
-            # appending boundary curves to the geometry
-            [geo.Append(c, bc=bc) for c, bc in outer_curves]
-            [geo.Append(c, bc=bc) for c, bc in inner_curves]
+            if l%2 == 0:    # lobes with an even index
+                p[l,1], p[l,5], p[l,6] = geo.AppendPoint(*ps[1]), geo.AppendPoint(*ps[5]), geo.AppendPoint(*ps[6])
+                p[l,7], p[l,8], p[l,9], p[l,10], p[l,11] = [geo.AppendPoint(*q) for q in qs]
+                p[l,13] = geo.AppendPoint(*corner(ps[5], ps[6]))    # p56
+                p[l,14] = geo.AppendPoint(*corner(qs[2], qs[3]))    # q23
+                p[l,15] = geo.AppendPoint(*corner(qs[3], qs[4]))    # q34
+                outer_curves = [
+                    [["line", p[l-1, 1], p[l,6]], "line"],
+                    [["spline3", p[l,6], p[l,13], p[l,5]], "curve"],
+                    [["line", p[l,1], p[l-1,2]], "line"]    # line connecting adjacent lobes
+                ]
+                inner_curves = [
+                    [["line", p[l,7], p[l,8]], "line"],
+                    [["line", p[l,8], p[l,9]], "line"],
+                    [["spline3", p[l,9], p[l,14], p[l,10]], "curve"],
+                    [["spline3", p[l,10], p[l,15], p[l,11]], "curve"],
+                    [["line", p[l,11], p[l,7]], "line"] 
+                ]
+                # appending boundary curves to the geometry
+                [geo.Append(c, bc=bc) for c, bc in outer_curves]
+                [geo.Append(c, bc=bc) for c, bc in inner_curves]
+                           
+            else:   # lobes with odd indices have an opposite orientation   
+                p[l,1], p[l,5], p[l,6] = geo.AppendPoint(*ps[1]), geo.AppendPoint(*ps[5]), geo.AppendPoint(*ps[6])
+                p[l,7], p[l,8], p[l,9], p[l,10], p[l,11] = [geo.AppendPoint(*q) for q in qs]
+                p[l,13] = geo.AppendPoint(*corner(ps[5], ps[6]))    # p56
+                p[l,14] = geo.AppendPoint(*corner(qs[2], qs[3]))    # q23
+                p[l,15] = geo.AppendPoint(*corner(qs[3], qs[4]))    # q34
+                outer_curves = [
+                    [["line", p[l,6], p[l-1, 1]], "line"],
+                    [["spline3", p[l,5], p[l,13], p[l,6]], "curve"],
+                    [["line", p[l-1,2], p[l,1]], "line"]    # line connecting adjacent lobes
+                ]
+                inner_curves = [
+                    [["line", p[l,8], p[l,7]], "line"],
+                    [["line", p[l,9], p[l,8]], "line"],
+                    [["spline3", p[l,10], p[l,14], p[l,9]], "curve"],
+                    [["spline3", p[l,11], p[l,15], p[l,10]], "curve"],
+                    [["line", p[l,7], p[l,11]], "line"] 
+                ]
+                # appending boundary curves to the geometry
+                [geo.Append(c, bc=bc) for c, bc in outer_curves]
+                [geo.Append(c, bc=bc) for c, bc in inner_curves]
 
-    
-   
     # add the end of the valve (outlet)
     ref = coords[lobes-1][1]   # p1 point of the last lobe, used for reference coordinates
-    es = [ref+[90,-39], ref+[94,-34], ref+[100,-34], ref+[148,-34], ref+[148,4], ref+[103,4]]
-    e0, e1, e2, e3, e4, e5 = [geo.AppendPoint(*e) for e in es]
-    end_curves = [
-            [["line", p[lobes-1,5], e0], "line"],
-            [["spline3", e0, e1, e2], "curve"],
-            [["line", e2, e3], "line"],
-            [["line", e3, e4], "line"],
-            [["line", e4, e5], "line"],
-            [["line", e5, p[lobes-1,1]], "line"]
-    ]
+    if lobes % 2 == 1:
+        es = [ref+[90,-39], ref+[94,-34], ref+[100,-34], ref+[148,-34], ref+[148,4], ref+[103,4]]
+        e0, e1, e2, e3, e4, e5 = [geo.AppendPoint(*e) for e in es]
+        end_curves = [
+                [["line", p[lobes-1,5], e0], "line"],
+                [["spline3", e0, e1, e2], "curve"],
+                [["line", e2, e3], "line"],
+                [["line", e3, e4], "line"],
+                [["line", e4, e5], "line"],
+                [["line", e5, p[lobes-1,1]], "line"]
+        ]
+    else:   # if the final lobe has an odd index, y coordinates must be mirrored
+        es = [ref+[90,39], ref+[94,34], ref+[100,34], ref+[148,34], ref+[148,-4], ref+[103,-4]]
+        e0, e1, e2, e3, e4, e5 = [geo.AppendPoint(*e) for e in es]
+        end_curves = [
+                [["line", e0, p[lobes-1,5]], "line"],
+                [["spline3", e2, e1, e0], "curve"],
+                [["line", e3, e2], "line"],
+                [["line", e4, e3], "line"],
+                [["line", e5, e4], "line"],
+                [["line", p[lobes-1,1], e5], "line"]
+        ]
     [geo.Append(c, bc=bc) for c, bc in end_curves]
 
     # construct the mesh
-    if debug: print("Mesh generation initialized.")
     ngmsh = geo.GenerateMesh(maxh=max_elem_size)
-    if debug: print("Mesh generation terminated.")
     msh = Mesh(ngmsh)
-    VTKFile("output/MeshExample2.pvd").write(msh)
+    VTKFile(f"output/{name}").write(msh)
 
 
 if __name__ == "__main__":
     # ps = generate_points(3)
     # print(ps)
-    netgen_mesh(lobes=3, max_elem_size=3, debug=False)
+    netgen_mesh(lobes=2, max_elem_size=10)
