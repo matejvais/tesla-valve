@@ -50,6 +50,19 @@ from firedrake import *
 #################################################
 
 
+def corner(pointA,pointB):
+    '''
+    Return the coordinates of the "corner" point used for creating a spline3 curve approximating a
+    quarter-circle.
+    '''
+    a1,a2,b1,b2 = pointA[0],pointA[1],pointB[0],pointB[1]
+    if b2 > a2:
+        c1, c2 = 0.5 * (a1 + b1 + b2 - a2), 0.5 * (a2 + b2 + a1 - b1)
+    else:
+        c1, c2 = 0.5 * (a1 + b1 + a2 - b2), 0.5 * (a2 + b2 + b1 - a1)
+    return tuple((c1, c2))
+
+
 def generate_points(lobes):
     '''
     Return an 2D array of points defining the Tesla valve. The first lobe is facing downward.
@@ -57,7 +70,7 @@ def generate_points(lobes):
         lobes - number of lobes in the Tesla valve
     '''
     coords = np.zeros((lobes, 12, 2))
-    x_shift, y_shift = 133, 38
+    x_shift, y_shift = 133, -38
     ps = np.array([
      [0   ,-38],
      [133 ,  0],
@@ -135,7 +148,7 @@ def netgen_mesh(lobes, max_elem_size, debug=False):
             [geo.Append(c, bc=bc) for c, bc in inner_curves]
 
         # middle lobes
-        elif l <= lobes-1:  # lobes in the middle
+        elif l <= lobes-2:  # lobes in the middle
             if l%2 == 0:    # lobes with an even index
                 p[l,0], p[l,1], p[l,2], p[l,3], p[l,4], p[l,5], p[l,6] = [geo.AppendPoint(*p) for p in ps]
                 p[l,7], p[l,8], p[l,9], p[l,10], p[l,11] = [geo.AppendPoint(*q) for q in qs]
@@ -168,7 +181,7 @@ def netgen_mesh(lobes, max_elem_size, debug=False):
                 [geo.Append(c, bc=bc) for c, bc in inner_curves]    
 
             else:   # lobes with odd indices have an opposite orientation
-                p[l,0], p[l,1], p[l,2], p[l,3], p[l,4], p[l,5], p[l,6] = [geo.AppendPoint(*p) for p in ps]
+                p[l,1], p[l,2], p[l,3], p[l,4], p[l,5], p[l,6] = [geo.AppendPoint(*p) for p in ps[1:7]]
                 p[l,7], p[l,8], p[l,9], p[l,10], p[l,11] = [geo.AppendPoint(*q) for q in qs]
                 p[l,12] = geo.AppendPoint(*corner(ps[4], ps[5]))    # p45
                 p[l,13] = geo.AppendPoint(*corner(ps[5], ps[6]))    # p56
@@ -223,19 +236,19 @@ def netgen_mesh(lobes, max_elem_size, debug=False):
 
     
    
-    # # add the end of the valve (outlet)
-    # ref = coords[lobes-1][1]   # p1 point of the last lobe, used for reference coordinates
-    # es = [ref+[96,-39], ref+[100,-34], ref+[100,-34], ref+[148,-34], ref+[148,4], ref+[103,4]]
-    # e0, e1, e2, e3, e4, e5 = [geo.AppendPoint(*e) for e in es]
-    # end_curves = [
-    #         [["line", p[lobes-1,5], e0], "line"],
-    #         [["spline3", e0, e1, e2], "curve"],
-    #         [["line", e2, e3], "line"],
-    #         [["line", e3, e4], "line"],
-    #         [["line", e4, e5], "line"],
-    #         [["line", e5, p[lobes-1,1]], "line"]
-    # ]
-    # [geo.Append(c, bc=bc) for c, bc in end_curves]
+    # add the end of the valve (outlet)
+    ref = coords[lobes-1][1]   # p1 point of the last lobe, used for reference coordinates
+    es = [ref+[90,-39], ref+[94,-34], ref+[100,-34], ref+[148,-34], ref+[148,4], ref+[103,4]]
+    e0, e1, e2, e3, e4, e5 = [geo.AppendPoint(*e) for e in es]
+    end_curves = [
+            [["line", p[lobes-1,5], e0], "line"],
+            [["spline3", e0, e1, e2], "curve"],
+            [["line", e2, e3], "line"],
+            [["line", e3, e4], "line"],
+            [["line", e4, e5], "line"],
+            [["line", e5, p[lobes-1,1]], "line"]
+    ]
+    [geo.Append(c, bc=bc) for c, bc in end_curves]
 
     # construct the mesh
     if debug: print("Mesh generation initialized.")
@@ -243,30 +256,9 @@ def netgen_mesh(lobes, max_elem_size, debug=False):
     if debug: print("Mesh generation terminated.")
     msh = Mesh(ngmsh)
     VTKFile("output/MeshExample2.pvd").write(msh)
-    
-def corner(pointA,pointB):
-    '''
-    Return the coordinates of the "corner" point used for creating a spline3 curve approximating a
-    quarter-circle.
-    '''
-    a1,a2,b1,b2 = pointA[0],pointA[1],pointB[0],pointB[1]
-    if b2 > a2:
-        c1, c2 = 0.5 * (a1 + b1 + b2 - a2), 0.5 * (a2 + b2 + a1 - b1)
-    else:
-        c1, c2 = 0.5 * (a1 + b1 + a2 - b2), 0.5 * (a2 + b2 + b1 - a1)
-    return tuple((c1, c2))
-
-
-# def shift_coords(data, x_shift, y_shift):
-#     '''
-#     Auxiliary function.
-#     Prints coordinates of points together with their shifted counterparts.
-#     '''
-#     data = np.concatenate([data+np.array([x_shift, y_shift])], axis=1)
-#     print(data)
 
 
 if __name__ == "__main__":
     # ps = generate_points(3)
     # print(ps)
-    netgen_mesh(lobes=1, max_elem_size=10, debug=True)
+    netgen_mesh(lobes=3, max_elem_size=3, debug=False)
