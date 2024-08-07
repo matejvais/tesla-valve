@@ -1,8 +1,9 @@
-import PIL as pil
+# import PIL as pil
 import numpy as np
 #import nanomesh as nm
 from netgen.geom2d import SplineGeometry
 from firedrake import *
+
 
 
 
@@ -212,7 +213,7 @@ def netgen_mesh(lobes, max_elem_size, generate_pvd=True, name="tesla-valve.pvd")
 
         # the final lobe
         else:
-            if l%2 == 0:    # lobes with an even index
+            if l%2 == 0:    # the final lobe has an even index
                 p[l,1], p[l,5], p[l,6] = geo.AppendPoint(*ps[1]), geo.AppendPoint(*ps[5]), geo.AppendPoint(*ps[6])
                 p[l,7], p[l,8], p[l,9], p[l,10], p[l,11] = [geo.AppendPoint(*q) for q in qs]
                 p[l,13] = geo.AppendPoint(*corner(ps[5], ps[6]))    # p56
@@ -234,7 +235,7 @@ def netgen_mesh(lobes, max_elem_size, generate_pvd=True, name="tesla-valve.pvd")
                 [geo.Append(c, bc=bc) for c, bc in outer_curves]
                 [geo.Append(c, bc=bc) for c, bc in inner_curves]
                            
-            else:   # lobes with odd indices have an opposite orientation   
+            else:   # the final lobe has an odd index, boundary curves are constructed with the opposite orientation  
                 p[l,1], p[l,5], p[l,6] = geo.AppendPoint(*ps[1]), geo.AppendPoint(*ps[5]), geo.AppendPoint(*ps[6])
                 p[l,7], p[l,8], p[l,9], p[l,10], p[l,11] = [geo.AppendPoint(*q) for q in qs]
                 p[l,13] = geo.AppendPoint(*corner(ps[5], ps[6]))    # p56
@@ -269,7 +270,7 @@ def netgen_mesh(lobes, max_elem_size, generate_pvd=True, name="tesla-valve.pvd")
                 [["line", e4, e5], "line"],
                 [["line", e5, p[lobes-1,1]], "line"]
         ]
-    else:   # if the final lobe has an odd index, y coordinates must be mirrored
+    else:   # if the final lobe has an odd index (i.e. number of lobes is even), y coordinates must be mirrored
         es = [ref+[90,39], ref+[94,34], ref+[100,34], ref+[148,34], ref+[148,-4], ref+[103,-4]]
         e0, e1, e2, e3, e4, e5 = [geo.AppendPoint(*e) for e in es]
         end_curves = [
@@ -284,15 +285,44 @@ def netgen_mesh(lobes, max_elem_size, generate_pvd=True, name="tesla-valve.pvd")
 
     # construct the mesh
     ngmsh = geo.GenerateMesh(maxh=max_elem_size)
-    
-    # labels = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name in ["line","curve"]]
-    # bc = DirichletBC(V, 0, labels)
-    # print(labels)
 
+    # generate a .pvd file if required
+    if generate_pvd: 
+        msh = Mesh(ngmsh)
+        VTKFile(f"output/{name}").write(msh)
+
+    return ngmsh
+
+def solve_ns(ngmsh):
     msh = Mesh(ngmsh)
-    if generate_pvd: VTKFile(f"output/{name}").write(msh)
-    return msh
+
+    # define function spaces
+    V = VectorFunctionSpace(msh, "CG", 2)
+    W = FunctionSpace(msh, "CG", 1)
+    Z = V * W
+
+    # define boundary conditions
+    x = SpatialCoordinate(msh)
+    labels_wall = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name in ["line","curve"]]
+    labels_in = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name == "inlet"]
+    bc_wall = DirichletBC(V, 0, labels_wall)    # zero velocity on the walls of the valve
+    bc_in = DirichletBC(V, 0.1*x[1]*(x[1]+38), labels_in)   # inflow velocity profile
+    # Firedrake automatically prescribes the natural boundary condition (zero normal stress) on the outflow
+
+    up = Function(Z)
+    u, p = split(up)
+    v, q = TestFunctions(Z)
+
+    # define PDE residual
+    Re = Constant(100.0)
+    F = (
+        1.0 / Re * inner(grad(u), grad(v)) * dx +
+        inner(dot(grad(u), u), v) * dx -
+        p * div(v) * dx +
+        div(u) * q * dx
+    )
 
 
 if __name__ == "__main__":
-    netgen_mesh(lobes=2, max_elem_size=10)
+    ngmsh = netgen_mesh(lobes=2, max_elem_size=10)
+    solve_ns(ngmsh)
