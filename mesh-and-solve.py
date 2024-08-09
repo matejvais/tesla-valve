@@ -297,8 +297,8 @@ def solve_ns(ngmsh):
     msh = Mesh(ngmsh)
 
     # define function spaces
-    V = VectorFunctionSpace(msh, "CG", 2)
-    W = FunctionSpace(msh, "CG", 1)
+    V = VectorFunctionSpace(msh, "CG", 3)
+    W = FunctionSpace(msh, "DG", 2)
     Z = V * W
 
     # define boundary conditions
@@ -306,8 +306,9 @@ def solve_ns(ngmsh):
     labels_wall = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name in ["line","curve"]]
     labels_in = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name == "inlet"]
     bc_wall = DirichletBC(V, 0, labels_wall)    # zero velocity on the walls of the valve
-    bc_in = DirichletBC(V, 0.1*x[1]*(x[1]+38), labels_in)   # inflow velocity profile
+    bc_in = DirichletBC(V, as_vector([0.1*x[1]*(x[1]+38),0]), labels_in)   # inflow velocity profile
     # Firedrake automatically prescribes the natural boundary condition (zero normal stress) on the outflow
+    bcs = [bc_wall, bc_in]
 
     up = Function(Z)
     u, p = split(up)
@@ -322,6 +323,89 @@ def solve_ns(ngmsh):
         div(u) * q * dx
     )
 
+    nullspace = MixedVectorSpaceBasis(Z, [Z.sub(0), VectorSpaceBasis(constant=True)])
+
+    appctx = {"Re": Re, "velocity_space": 0}
+
+    try:
+        solve(F == 0, up, bcs=bcs, nullspace=nullspace,
+            solver_parameters={"snes_monitor": None,
+                                "ksp_type": "gmres",
+                                "mat_type": "aij",
+                                "pc_type": "lu",
+                                "pc_factor_mat_solver_type": "mumps"})
+    except firedrake.PETSc.Error as e:
+        if e.ierr == 92:
+            warning("MUMPS not installed, skipping direct solve")
+        else:
+            raise e
+
+    parameters = {"mat_type": "matfree",
+                "snes_monitor": None,
+
+    # We'll use a non-stationary Krylov solve for the Schur complement, so
+    # we need to use a flexible Krylov method on the outside. ::
+
+                "ksp_type": "fgmres",
+                "ksp_gmres_modifiedgramschmidt": None,
+                "ksp_monitor_true_residual": None,
+
+    # Now to configure the preconditioner::
+
+                "pc_type": "fieldsplit",
+                "pc_fieldsplit_type": "schur",
+                "pc_fieldsplit_schur_fact_type": "lower",
+
+    # we invert the velocity block with LU::
+
+                "fieldsplit_0_ksp_type": "preonly",
+                "fieldsplit_0_pc_type": "python",
+                "fieldsplit_0_pc_python_type": "firedrake.AssembledPC",
+                "fieldsplit_0_assembled_pc_type": "lu",
+
+    # and invert the schur complement inexactly using GMRES, preconditioned
+    # with PCD. ::
+
+                "fieldsplit_1_ksp_type": "gmres",
+                "fieldsplit_1_ksp_rtol": 1e-4,
+                "fieldsplit_1_pc_type": "python",
+                "fieldsplit_1_pc_python_type": "firedrake.PCDPC",
+
+    # We now need to configure the mass and stiffness solvers in the PCD
+    # preconditioner.  For this example, we will just invert them with LU,
+    # although of course we can use a scalable method if we wish. First the
+    # mass solve::
+
+                "fieldsplit_1_pcd_Mp_ksp_type": "preonly",
+                "fieldsplit_1_pcd_Mp_pc_type": "lu",
+
+    # and the stiffness solve.::
+
+                "fieldsplit_1_pcd_Kp_ksp_type": "preonly",
+                "fieldsplit_1_pcd_Kp_pc_type": "lu",
+
+    # Finally, we just need to decide whether to apply the action of the
+    # pressure-space convection-diffusion operator with an assembled matrix
+    # or matrix free.  Here we will use matrix-free::
+
+                "fieldsplit_1_pcd_Fp_mat_type": "matfree"}
+
+    # With the parameters set up, we can solve the problem, remembering to
+    # pass in the application context so that the PCD preconditioner can
+    # find the Reynolds number. ::
+
+    up.assign(0)
+
+    solve(F == 0, up, bcs=bcs, nullspace=nullspace, solver_parameters=parameters,
+        appctx=appctx)
+
+    # And finally we write the results to a file for visualisation. ::
+
+    u, p = up.subfunctions
+    u.rename("Velocity")
+    p.rename("Pressure")
+
+    VTKFile("tesla-valve-results.pvd").write(u, p)
 
 if __name__ == "__main__":
     ngmsh = netgen_mesh(lobes=2, max_elem_size=10)
