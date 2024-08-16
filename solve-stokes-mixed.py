@@ -1,16 +1,20 @@
 from firedrake import *
 import netgen_mesh as nm    # custom module for mesh generation
 
-def solve_stokes_mixed(ngmsh, power_law_index=2.0, poly_deg=3, name="output"):
+
+def solve_stokes_mixed(ngmsh, orientation=1, inlet_velocity_coef=0.1, viscosity=10, power_law_index=2.0, poly_deg=3, name="output"):
     '''
     Solves the Stokes equation in the Tesla valve using the mixed formulation.
     Mostly used the code from josef/steady.py with some modifications:
         https://bitbucket.org/pefarrell/josef/src/master/
     Variables:
-        ngmesh - Netgen mesh
+        ngmesh - Netgen mesh,
+        orientation - 1 for flow from left to right, -1 for flow from right to left
+        inlet_velocity_coef - coefficient that specifies magnitude of velocity on the inlet
+        viscosity - dynamic viscosity of the fluid inside the valve,
         power_law_index - power in the constitutive relation (power-law fluid),
-        poly_deg - polynomial degree of the finite element approximation.
-        name - name of the saved solution file
+        poly_deg - polynomial degree of the finite element approximation,
+        name - name of the saved solution file.
     '''
 
     mesh = Mesh(ngmsh)
@@ -36,7 +40,7 @@ def solve_stokes_mixed(ngmsh, power_law_index=2.0, poly_deg=3, name="output"):
     D = sym(grad(u))
 
     # the constitutive relation
-    mu_zero = Constant(100) # dynamic viscosity
+    mu_zero = Constant(viscosity) # dynamic viscosity
     p_ = Constant(power_law_index)
     G = S - 2 * mu_zero * (inner(D, D))**((p_-2)/2) * D
 
@@ -49,16 +53,28 @@ def solve_stokes_mixed(ngmsh, power_law_index=2.0, poly_deg=3, name="output"):
         + inner(G, T)*dx
         )
 
+    # define boundary marks for the inlet, the outlet, and the wall
+    labels_left = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name == "left"]
+    labels_right = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name == "right"]
+    labels_wall = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name in ["line","curve"]]
+
     # define boundary conditions
     x = SpatialCoordinate(mesh)
-    labels_wall = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name in ["line","curve"]]
-    labels_in = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name == "inlet"]
-    labels_out = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name == "outlet"]
+    if orientation == 1:    # fluid flows from left to right (->)
+        bc_in = DirichletBC(Z.sub(0), as_vector([-inlet_velocity_coef*x[1]*(x[1]+38),0]), labels_left)   # inflow velocity profile
+        bc_out = DirichletBC(Z.sub(0).sub(1), Constant(0), labels_right)  # outflow
+        z.subfunctions[0].interpolate(as_vector([-inlet_velocity_coef*x[1]*(x[1]+38), 0]))
+    else: # fluid flows from right to left (<-)
+        n_curves = len(ngmsh.GetRegionNames(codim=1))   # number of curves forming the boundary of the valve
+        if n_curves%2 == 1:    # even number of lobes
+            bc_in = DirichletBC(Z.sub(0), as_vector([inlet_velocity_coef*(x[1]+4)*(x[1]+42),0]), labels_right)   # inflow velocity profile
+            z.subfunctions[0].interpolate(as_vector([-inlet_velocity_coef*(x[1]+4)*(x[1]+42),0]))
+        else:   # odd number of lobes
+            bc_in = DirichletBC(Z.sub(0), as_vector([inlet_velocity_coef*(x[1]-4)*(x[1]+34),0]), labels_right)
+            z.subfunctions[0].interpolate(as_vector([inlet_velocity_coef*(x[1]-4)*(x[1]+34),0]))
+        bc_out = DirichletBC(Z.sub(0).sub(1), Constant(0), labels_left)  # outflow
     bc_wall = DirichletBC(Z.sub(0), 0, labels_wall)    # zero velocity on the walls of the valve
-    bc_in = DirichletBC(Z.sub(0), as_vector([0.1*x[1]*(x[1]+38),0]), labels_in)   # inflow velocity profile
-    bc_out = DirichletBC(Z.sub(0).sub(1), Constant(0), labels_out)
-    bcs = [bc_wall, bc_in, bc_out]
-    z.subfunctions[0].interpolate(as_vector([0.1*x[1]*(x[1]+38), 0]))
+    bcs = [bc_in, bc_wall, bc_out]
 
     # solver parameters
     sp = {"snes_type": "newtonls",
@@ -77,5 +93,5 @@ def solve_stokes_mixed(ngmsh, power_law_index=2.0, poly_deg=3, name="output"):
 
 
 if __name__ == "__main__":
-    ngmsh = nm.netgen_mesh(lobes=4, max_elem_size=10)
-    solve_stokes_mixed(ngmsh)
+    ngmsh = nm.netgen_mesh(lobes=3, max_elem_size=5)
+    solve_stokes_mixed(ngmsh, orientation=-1, inlet_velocity_coef=0.1, viscosity=100)
