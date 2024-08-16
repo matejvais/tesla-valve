@@ -1,5 +1,5 @@
 from firedrake import *
-import netgen_mesh
+import netgen_mesh as nm    # custom module for mesh generation
 
 def solve_stokes_mixed(ngmsh, power_law_index=2.0, poly_deg=3, name="output"):
     '''
@@ -77,5 +77,5 @@ def solve_stokes_mixed(ngmsh, power_law_index=2.0, poly_deg=3, name="output"):
 
 
 if __name__ == "__main__":
-    ngmsh = netgen_mesh(lobes=4, max_elem_size=10)
+    ngmsh = nm.netgen_mesh(lobes=4, max_elem_size=10)
     solve_stokes_mixed(ngmsh)
