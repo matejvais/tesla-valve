@@ -16,7 +16,6 @@ def solve_stokes_mixed(ngmsh, orientation=1, inlet_velocity_coef=0.1, viscosity=
         poly_deg - polynomial degree of the finite element approximation,
         name - name of the saved solution file.
     '''
-
     mesh = Mesh(ngmsh)
 
     # function spaces
@@ -59,19 +58,21 @@ def solve_stokes_mixed(ngmsh, orientation=1, inlet_velocity_coef=0.1, viscosity=
     labels_wall = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name in ["line","curve"]]
 
     # define boundary conditions
-    x = SpatialCoordinate(mesh)
+    (x, y) = SpatialCoordinate(mesh)
     if orientation == 1:    # fluid flows from left to right (->)
-        bc_in = DirichletBC(Z.sub(0), as_vector([-inlet_velocity_coef*x[1]*(x[1]+38),0]), labels_left)   # inflow velocity profile
+        print("Flow direction: =>")
+        bc_in = DirichletBC(Z.sub(0), as_vector([-inlet_velocity_coef*y*(y+38),0]), labels_left)   # inflow velocity profile
         bc_out = DirichletBC(Z.sub(0).sub(1), Constant(0), labels_right)  # outflow
-        z.subfunctions[0].interpolate(as_vector([-inlet_velocity_coef*x[1]*(x[1]+38), 0]))
+        z.subfunctions[0].interpolate(as_vector([-inlet_velocity_coef*y*(y+38), 0]))
     else: # fluid flows from right to left (<-)
+        print("Flow direction: <=")
         n_curves = len(ngmsh.GetRegionNames(codim=1))   # number of curves forming the boundary of the valve
         if n_curves%2 == 1:    # even number of lobes
-            bc_in = DirichletBC(Z.sub(0), as_vector([inlet_velocity_coef*(x[1]+4)*(x[1]+42),0]), labels_right)   # inflow velocity profile
-            z.subfunctions[0].interpolate(as_vector([-inlet_velocity_coef*(x[1]+4)*(x[1]+42),0]))
+            bc_in = DirichletBC(Z.sub(0), as_vector([inlet_velocity_coef*(y+4)*(y+42),0]), labels_right)   # inflow velocity profile
+            z.subfunctions[0].interpolate(as_vector([inlet_velocity_coef*(y+4)*(y+42),0]))
         else:   # odd number of lobes
-            bc_in = DirichletBC(Z.sub(0), as_vector([inlet_velocity_coef*(x[1]-4)*(x[1]+34),0]), labels_right)
-            z.subfunctions[0].interpolate(as_vector([inlet_velocity_coef*(x[1]-4)*(x[1]+34),0]))
+            bc_in = DirichletBC(Z.sub(0), as_vector([inlet_velocity_coef*(y-4)*(y+34),0]), labels_right)
+            z.subfunctions[0].interpolate(as_vector([inlet_velocity_coef*(y-4)*(y+34),0]))
         bc_out = DirichletBC(Z.sub(0).sub(1), Constant(0), labels_left)  # outflow
     bc_wall = DirichletBC(Z.sub(0), 0, labels_wall)    # zero velocity on the walls of the valve
     bcs = [bc_in, bc_wall, bc_out]
@@ -94,4 +95,4 @@ def solve_stokes_mixed(ngmsh, orientation=1, inlet_velocity_coef=0.1, viscosity=
 
 if __name__ == "__main__":
     ngmsh = nm.netgen_mesh(lobes=3, max_elem_size=5)
-    solve_stokes_mixed(ngmsh, orientation=-1, inlet_velocity_coef=0.1, viscosity=100)
+    solve_stokes_mixed(ngmsh, orientation=-1, inlet_velocity_coef=0.02, viscosity=100)
