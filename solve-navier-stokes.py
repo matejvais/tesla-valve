@@ -1,16 +1,46 @@
-import numpy as np
 import firedrake as fd
-import netgen_mesh
+import netgen_mesh as nm
+
+
+def initial_guess(Z, bcs, nu):
+    '''
+    Copied (with minor modifications) from josef/sudden-expansion/sudden-expansion.py.
+    '''
+    # Solve Stokes in velocity-pressure form to make the initial guess
+    W = fd.MixedFunctionSpace([Z.sub(0), Z.sub(1)])
+    z = fd.Function(W)
+    w = fd.TestFunction(W)
+
+    Re = 1/nu
+
+    (u, p) = fd.split(z)
+    (v, q) = fd.split(w)
+    F = (
+            2.0/Re * fd.inner(fd.sym(fd.grad(u)), fd.sym(fd.grad(v)))*fd.dx
+        - fd.div(v)*p*fd.dx
+        - q*fd.div(u)*fd.dx
+        )
+    # bcs = self.boundary_conditions(W, params)
+    fd.solve(F == 0, z, bcs, solver_parameters={"snes_monitor": None})
+
+    # def flatten(S):
+    #     return fd.as_vector([S[0, 0], S[0, 1]])
+
+    z_ = fd.Function(Z)
+    z_.subfunctions[0].assign(z.subfunctions[0])
+    z_.subfunctions[1].assign(z.subfunctions[1])
+    # S = 2*nu*fd.sym(fd.grad(z.subfunctions[0]))
+    # z_.subfunctions[2].interpolate(flatten(S))
+
+    return z_
+    # return z
 
 
 def solve_navier_stokes(ngmsh):
-    mesh = Mesh(ngmsh)
-
-    # Mesh generation using a custom module or directly using Firedrake
-    import mymesh
-    # (mesh, bndry) = mymesh.read_from_hdf5("bench_csg")
-    m = mymesh.generate(n=3)
-    (mesh, bndry) = m[-1]
+    '''
+    From nmmo403/lecture5/ns_cylinder.py. Translated from Fenics to Firedrake by Chat GPT.
+    '''
+    mesh = fd.Mesh(ngmsh)
 
     # Define finite elements
     Ep = fd.FiniteElement("CG", mesh.ufl_cell(), 1)
@@ -22,28 +52,40 @@ def solve_navier_stokes(ngmsh):
     P = fd.FunctionSpace(mesh, Ep)
     W = fd.FunctionSpace(mesh, Evp)
 
-    # No-slip boundary condition for velocity on walls and cylinder - boundary id 3
-    noslip = fd.Constant((0, 0))
-    bcv_walls = fd.DirichletBC(W.sub(0), noslip, bndry, 3)
-    bcv_cylinder = fd.DirichletBC(W.sub(0), noslip, bndry, 5)
+    # # No-slip boundary condition for velocity on walls and cylinder - boundary id 3
+    # noslip = fd.Constant((0, 0))
+    # bcv_walls = fd.DirichletBC(W.sub(0), noslip, bndry, 3)
+    # bcv_cylinder = fd.DirichletBC(W.sub(0), noslip, bndry, 5)
 
-    U = 1.5
-    nu = fd.Constant(0.001)
-    dt = 0.1
-    t_end = 15
+    # define boundary conditions
+    x = fd.SpatialCoordinate(mesh)
+    labels_wall = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name in ["line","curve"]]
+    labels_left = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name == "left"]
+    labels_right = [i+1 for i, name in enumerate(ngmsh.GetRegionNames(codim=1)) if name == "right"]
+    bc_wall = fd.DirichletBC(W.sub(0), 0, labels_wall)    # zero velocity on the walls of the valve
+    bc_in = fd.DirichletBC(W.sub(0), fd.as_vector([-0.1*x[1]*(x[1]+38),0]), labels_left)   # inflow velocity profile
+    bc_out = fd.DirichletBC(W.sub(0).sub(1), fd.Constant(0), labels_right)
+    bcs = [bc_wall, bc_in, bc_out]
+    z = fd.Function(W)
+    z.subfunctions[0].interpolate(fd.as_vector([-0.1*x[1]*(x[1]+38), 0]))
+
+    # U = 1.5
+    nu = fd.Constant(100)
+    dt = 0.05
+    t_end = 2
     theta = fd.Constant(0.5)   # Crank-Nicholson timestepping
 
-    # Inflow boundary condition for velocity - boundary id 1
-    v_in = fd.Expression(("U * 4.0 * x[1] * (0.41 - x[1]) / ( 0.41 * 0.41 )", "0.0"), U=U, degree=2)
-    bcv_in = fd.DirichletBC(W.sub(0), v_in, bndry, 1)
+    # # Inflow boundary condition for velocity - boundary id 1
+    # v_in = fd.Expression(("U * 4.0 * x[1] * (0.41 - x[1]) / ( 0.41 * 0.41 )", "0.0"), U=U, degree=2)
+    # bcv_in = fd.DirichletBC(W.sub(0), v_in, bndry, 1)
 
-    # Collect boundary conditions
-    bcs = [bcv_cylinder, bcv_walls, bcv_in]
+    # # Collect boundary conditions
+    # bcs = [bcv_cylinder, bcv_walls, bcv_in]
 
     # Facet normal, identity tensor and boundary measure
     n = fd.FacetNormal(mesh)
     I = fd.Identity(mesh.geometric_dimension())
-    ds = fd.Measure("ds", subdomain_data=bndry)
+    # ds = fd.Measure("ds", subdomain_data=bndry)
 
     # Define unknown and test function(s)
     v_, p_ = fd.TestFunctions(W)
@@ -92,26 +134,35 @@ def solve_navier_stokes(ngmsh):
     name = "ns"
     out_file = dict()
     for i in ['v', 'p']:
-        out_file[i] = fd.XDMFFile(f"results_{name}/{i}.xdmf")
-        out_file[i].parameters["flush_output"] = True
+        out_file[i] = fd.VTKFile(f"results_{name}/{i}.pvd")
+        # out_file[i].parameters["flush_output"] = True
 
-    v, p = w.split(True)
+    v, p = w.split()
     v.rename("v", "velocity")
     p.rename("p", "pressure")
 
     # Time-stepping
     t = 0.0
 
-    # Save initial conditions
-    out_file['v'].write(v, t)
-    out_file['p'].write(p, t)
+    # Calculate the initial guess
+    init = initial_guess(W, bcs, nu=nu)
+    v_init, p_init = init.subfunctions[0], init.subfunctions[1]
 
-    lift = []
-    drag = []
+    # Ensure consistency by interpolating the initial guess into the same space
+    w_init = fd.Function(W)
+    w_init.subfunctions[0].assign(v_init)
+    w_init.subfunctions[1].assign(p_init)
+
+    # Write initial conditions
+    v, p = w_init.split()
+    v.rename("v", "velocity")
+    p.rename("p", "pressure")
+    out_file['v'].write(v)
+    out_file['p'].write(p)
 
     while t < t_end:
 
-        fd.comm.world.rank_zero_print("t =", t)
+        fd.PETSc.Sys.Print("t =", t)
 
         # move current solution to previous slot w0
         w0.assign(w)
@@ -120,37 +171,42 @@ def solve_navier_stokes(ngmsh):
         t += dt
 
         # Compute
-        fd.begin("Solving ....")
+        # fd.begin("Solving ....")
         solver.solve()
-        fd.end()
+        # fd.end()
 
         # Extract solutions:
-        v, p = w.split(True)
+        v, p = w.split()
 
-        # Report drag and lift
-        D = fd.sym(fd.grad(v))
-        T = -p*I + 2*nu*D
-        force = fd.dot(T, n)
-        D = -(2.0*force[0]/(1.0*1.0*0.1))*ds(5)
-        L = -(2.0*force[1]/(1.0*1.0*0.1))*ds(5)
-        drag.append((t, fd.assemble(D)))
-        lift.append((t, fd.assemble(L)))
+        # # Report drag and lift
+        # D = fd.sym(fd.grad(v))
+        # T = -p*I + 2*nu*D
+        # force = fd.dot(T, n)
+        # D = -(2.0*force[0]/(1.0*1.0*0.1))*ds(5)
+        # L = -(2.0*force[1]/(1.0*1.0*0.1))*ds(5)
+        # drag.append((t, fd.assemble(D)))
+        # lift.append((t, fd.assemble(L)))
 
         # Save to file
-        out_file['v'].write(v, t)
-        out_file['p'].write(p, t)
+        out_file['v'].write(v)
+        out_file['p'].write(p)
 
-    if fd.COMM_WORLD.rank == 0:
-        import matplotlib
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
+    # if fd.COMM_WORLD.rank == 0:
+    #     import matplotlib
+    #     matplotlib.use('Agg')
+    #     import matplotlib.pyplot as plt
 
-        drag = np.array(drag)
-        lift = np.array(lift)
-        plt.plot(drag[:, 0], drag[:, 1], '-', label='drag')
-        plt.plot(lift[:, 0], lift[:, 1], '-', label='lift')
-        plt.title('Flow around cylinder benchmark')
-        plt.xlabel('time')
-        plt.ylabel('lift/drag coeff')
-        plt.legend(loc=1)
-        plt.savefig('graph_{}.pdf'.format("lift_drag"), bbox_inches='tight')
+    #     drag = np.array(drag)
+    #     lift = np.array(lift)
+    #     plt.plot(drag[:, 0], drag[:, 1], '-', label='drag')
+    #     plt.plot(lift[:, 0], lift[:, 1], '-', label='lift')
+    #     plt.title('Flow around cylinder benchmark')
+    #     plt.xlabel('time')
+    #     plt.ylabel('lift/drag coeff')
+    #     plt.legend(loc=1)
+    #     plt.savefig('graph_{}.pdf'.format("lift_drag"), bbox_inches='tight')
+
+
+if __name__ == "__main__":
+    ngmsh = nm.netgen_mesh(lobes=4, max_elem_size=5)
+    solve_navier_stokes(ngmsh)

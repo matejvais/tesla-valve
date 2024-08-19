@@ -1,0 +1,6 @@
+*.pvd
+*.vtu
+output
+meshes
+results_ns
+__pycache__
