@@ -5,6 +5,7 @@ from firedrake import *
 
 def corner(pointA,pointB):
     '''
+    Auxilliary function for netgen_mesh().
     Return the coordinates of the "corner" point used for creating a spline3 curve approximating a
     quarter-circle.
     '''
@@ -18,6 +19,7 @@ def corner(pointA,pointB):
 
 def generate_points(lobes):
     '''
+    Auxilliary function for netgen_mesh().
     Returns an 2D array of points defining the Tesla valve. The first lobe is facing downward.
     Variables:
         lobes - number of lobes in the Tesla valve

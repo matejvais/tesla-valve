@@ -1,5 +1,5 @@
 import firedrake as fd
-import netgen_mesh as nm
+import netgen_mesh as nm # custom module form netgen_mesh.py
 
 
 def initial_guess(Z, bcs, nu):
