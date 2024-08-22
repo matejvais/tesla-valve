@@ -15,6 +15,7 @@ Required packages:
 
 ## Usage
 * `netgen_mesh.py`: This script is used for generation of the Tesla-valve-shaped mesh. The user can adjust: number of lobes (turns) in the valve, mesh size, etc.
+* `solve-stoke.py` is used for solving a time-independent Stokes flow through the Tesla valve using the velocity-pressure formulation.
 * `solve-stokes-mixed.py` is used for solving a time-independent Stokes flow through the Tesla valve using the mixed formulation of the problem (shear stress is treated as a third unknown in addition to the velocity and pressure).
 * `solve-navier-stokes.py` produces a time-dependent solution of a flow through the valve. 
 * `tesla-valve-drawings.pdf`: Drawings used for creating `netgen_mesh.py` (they provide a visual representation of the code).
