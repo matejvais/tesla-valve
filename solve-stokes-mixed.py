@@ -91,5 +91,5 @@ def solve_stokes_mixed(ngmsh, orientation=1, inlet_velocity_coef=0.1, name="outp
 
 
 if __name__ == "__main__":
-    ngmsh = nm.netgen_mesh(lobes=4, max_elem_size=5)
-    solve_stokes_mixed(ngmsh, orientation=-1, inlet_velocity_coef=0.05)
+    ngmsh = nm.netgen_mesh(lobes=8, max_elem_size=5)
+    solve_stokes_mixed(ngmsh, orientation=1, inlet_velocity_coef=0.1)

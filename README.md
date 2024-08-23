@@ -28,4 +28,4 @@ During creation of this project, I used and adapted two scripts provided by Patr
 To translate `ns_cylinder.py` from FEniCS to Firedrake, explain certain formulations and debugging, I relied on ChatGPT (version GPT-4o).
 
 ## Project status
-Work in progress.
+The project is done.

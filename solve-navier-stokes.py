@@ -173,5 +173,5 @@ def solve_navier_stokes(ngmsh, orientation=1, inlet_velocity_coef=0.1):
 
 
 if __name__ == "__main__":
-    ngmsh = nm.netgen_mesh(lobes=4, max_elem_size=5)
-    solve_navier_stokes(ngmsh, orientation=1, inlet_velocity_coef=0.05)
+    ngmsh = nm.netgen_mesh(lobes=8, max_elem_size=5)
+    solve_navier_stokes(ngmsh, orientation=1, inlet_velocity_coef=0.1)
