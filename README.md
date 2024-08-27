@@ -18,6 +18,7 @@ Required packages:
 * `solve-stoke.py` is used for solving a time-independent Stokes flow through the Tesla valve using the velocity-pressure formulation.
 * `solve-stokes-mixed.py` is used for solving a time-independent Stokes flow through the Tesla valve using the mixed formulation of the problem (shear stress is treated as a third unknown in addition to the velocity and pressure).
 * `solve-navier-stokes.py` produces a time-dependent solution of a flow through the valve. 
+* `tesla_valve_presentation.pdf`: a short presentation of the project.
 * `tesla-valve-drawings.pdf`: Drawings used for creating `netgen_mesh.py` (they provide a visual representation of the code).
 
 ## Acknowledgment
@@ -28,4 +29,4 @@ During creation of this project, I used and adapted two scripts provided by Patr
 To translate `ns_cylinder.py` from FEniCS to Firedrake, explain certain formulations and debugging, I relied on ChatGPT (version GPT-4o).
 
 ## Project status
-The project is done.
+The project is completed.
